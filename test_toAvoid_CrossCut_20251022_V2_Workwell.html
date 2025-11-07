@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Connection Relations Graph (Dagre Layout)</title>
+  <!-- Primary CDN -->
+  <script src="https://unpkg.com/cytoscape@3.21.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.4.0/cytoscape-dagre.js"></script>
+  
+  <!-- Fallback CDNs -->
+  <script>
+    // Check if primary libraries loaded, if not try fallbacks
+    window.addEventListener('load', function() {
+      if (typeof cytoscape === 'undefined') {
+        console.log('Primary Cytoscape CDN failed, trying fallback...');
+        loadFallbackScript('https://cdn.jsdelivr.net/npm/cytoscape@3.21.1/dist/cytoscape.min.js')
+        .then(() => loadFallbackScript('https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js'))
+        .then(() => loadFallbackScript('https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.4.0/cytoscape-dagre.js'))
+        .then(() => {
+          console.log('Fallback libraries loaded successfully');
+          initializeApp();
+        })
+        .catch(err => {
+          console.error('All CDN sources failed:', err);
+          showOfflineMessage();
+        });
+      } else {
+        console.log('Primary libraries loaded successfully');
+        initializeApp();
+      }
+    });
+    
+    function loadFallbackScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    
+    function showOfflineMessage() {
+      document.getElementById('cy').innerHTML = `
+        <div style="padding: 20px; text-align: center; color: #d00;">
+          <h3>Unable to load required libraries</h3>
+          <p>This application requires an internet connection to load the Cytoscape.js library.</p>
+          <p>Please check your internet connection and refresh the page.</p>
+          <p>If the problem persists, the CDN servers may be temporarily unavailable.</p>
+          <button onclick="useBasicVisualization()" style="margin-top: 15px; padding: 10px 20px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer;">Try Basic Visualization</button>
+        </div>
+      `;
+    }
+    
+    function useBasicVisualization() {
+      // Create a simple HTML-based visualization as fallback
+      updateStatus('Using basic HTML visualization...');
+      const sampleData = `r0_vsoc=[r1_vsoc,r1_vddz,mpccp,fch,mpm,sst0,zsc3_msmu,zsc8_msmu,zsc9_msmu,zsc10_msmu]
+r1_vsoc=[r0_vsoc,smuio,thm,l1imuPCIE0,l1imuPCIE2,iohc0,l2imu0,ioagr0,ioapic0,sst1,lsdma0,vpe,l1imuIOAGR]
+r1_vddz=[r0_vsoc,mpccp,fch,mpm,sst0,zsc3_msmu,zsc8_msmu,zsc9_msmu,zsc10_msmu]
+mpccp=[r0_vsoc,r1_vddz,fch,mpm]
+fch=[r0_vsoc,r1_vddz,mpccp,fch]
+mpm=[r0_vsoc,r1_vddz,mpccp,fch]`;
+      
+      const { nodes, edges } = parseRelations(sampleData);
+      showBasicGraph(nodes, edges);
+      updateStatus(`Basic visualization created with ${nodes.length} nodes and ${edges.length} edges.`);
+    }
+    
+    function showBasicGraph(nodes, edges) {
+      let html = '<div style="font-family: Arial, sans-serif; line-height: 1.6;">';
+      html += '<h3>Network Connections (Text View)</h3>';
+      html += '<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; max-height: 600px; overflow-y: auto;">';
+      
+      // Group connections by source
+      const connections = {};
+      edges.forEach(edge => {
+        const [source, target] = edge.data.id.split('-');
+        if (!connections[source]) connections[source] = [];
+        if (!connections[target]) connections[target] = [];
+        if (!connections[source].includes(target)) connections[source].push(target);
+        if (!connections[target].includes(source)) connections[target].push(source);
+      });
+      
+      // Display connections
+      Object.keys(connections).sort().forEach(node => {
+        const isRouter = /r\d*_/.test(node);
+        const nodeStyle = isRouter ? 'background: yellow; color: #333; font-weight: bold;' : 'background: #1e90ff; color: white;';
+        html += `<div style="margin-bottom: 10px;">
+          <span style="display: inline-block; padding: 5px 10px; border-radius: 15px; ${nodeStyle}">${node}</span>
+          <span style="margin-left: 10px;">→ ${connections[node].join(', ')}</span>
+        </div>`;
+      });
+      
+      html += '</div></div>';
+      document.getElementById('cy').innerHTML = html;
+    }
+    
+    function initializeApp() {
+      // Register dagre layout
+      if (typeof cytoscape !== 'undefined' && typeof cytoscapeDagre !== 'undefined') {
+        cytoscape.use(cytoscapeDagre);
+        console.log('Dagre layout registered successfully');
+        
+        // Set default layout in dropdown
+        document.getElementById('layoutSelect').value = 'cose';
+        
+        // Auto-load sample data after libraries are ready
+        setTimeout(loadSampleData, 100);
+      } else {
+        console.error('Libraries still not available after fallback attempts');
+        showOfflineMessage();
+      }
+    }
+  </script>
+  <style>
+    #cy { 
+      width: 1920px; 
+      height: 1080px; 
+      border: 1px solid #aaa; 
+      margin-top: 1em; 
+      box-sizing: border-box;
+    }
+    
+    /* Responsive canvas */
+    @media (max-width: 1600px) {
+      #cy { width: 95vw; max-width: 1400px; }
+    }
+    
+    @media (max-width: 1200px) {
+      #cy { width: 95vw; height: 600px; }
+    }
+    
+    @media (max-width: 800px) {
+      #cy { width: 95vw; height: 500px; }
+    }
+  </style>
+</head>
+<body>
+  <h2>Connection Relations Graph (from Config File, Dagre Layout) by DougSun</h2>
+  <input type="file" id="fileInput" accept=".txt">
+  <button onclick="loadSampleData()">Load Sample Data</button>
+  <label for="layoutSelect">Layout: </label>
+  <select id="layoutSelect" onchange="changeLayout()">
+    <option value="cose">Balanced (COSE)</option>
+    <option value="cose-spread">COSE Spread (Less Overlap)</option>
+    <option value="circle">Circle</option>
+    <option value="grid">Grid</option>
+    <option value="concentric">Concentric</option>
+    <option value="dagre">Hierarchical (Dagre)</option>
+    <option value="breadthfirst">Breadth First</option>
+  </select>
+  <button onclick="applyOptimalLayout()">Auto Layout</button>
+  <button onclick="fitToCanvas()">Fit to Canvas</button>
+  <button onclick="resetZoom()">Reset Zoom</button>
+  <button onclick="exportPng()">Export as PNG</button>
+  <button onclick="exportJpg()">Export as JPG</button>
+  <div id="status" style="color: #666; font-style: italic; margin: 10px 0;"></div>
+  <div id="cy"></div>
+  <p>
+    <b>Tip:</b> Use a config file with lines like:<br>
+    <code>
+      r0_vsoc=[r1_vsoc,r1_vddz,mpccp,fch,mpm,sst0,zsc3_msmu,zsc8_msmu,zsc9_msmu,zsc10_msmu]<br>
+      r1_vsoc=[r0_vsoc,smuio,thm,l1imuPCIE0,l1imuPCIE2,iohc0,l2imu0,ioagr0,ioapic0,sst1,lsdma0,vpe,l1imuIOAGR]
+    </code>
+  </p>
+  <script>
+    let cy; // Declare globally
+    
+    function getLayoutConfig(layoutName) {
+      // Get current node count for dynamic configuration
+      const nodeCount = cy ? cy.nodes().length : 20;
+      
+      const layouts = {
+        'cose': {
+          name: 'cose',
+          animate: true,
+          animationDuration: 1000,
+          nodeRepulsion: nodeCount > 50 ? 1200000 : nodeCount > 30 ? 1000000 : 800000,
+          nodeOverlap: nodeCount > 50 ? 30 : nodeCount > 30 ? 25 : 20,
+          idealEdgeLength: nodeCount > 50 ? 180 : nodeCount > 30 ? 160 : 140,
+          edgeElasticity: 100,
+          nestingFactor: 1.0,
+          gravity: 0.1,
+          numIter: nodeCount > 50 ? 4000 : nodeCount > 30 ? 3500 : 3000,
+          initialTemp: 1500,
+          coolingFactor: 0.99,
+          minTemp: 1.0,
+          fit: true,
+          padding: 20,
+          randomize: true,
+          componentSpacing: nodeCount > 50 ? 200 : nodeCount > 30 ? 180 : 160,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          nodeDimensionsIncludeLabels: true,
+          unconstrIter: 2000,
+          userConstIter: 500,
+          allConstIter: 100
+        },
+        'cose-spread': {
+          name: 'cose',
+          animate: true,
+          animationDuration: 1200,
+          nodeRepulsion: nodeCount > 50 ? 2000000 : nodeCount > 30 ? 1800000 : 1500000,
+          nodeOverlap: nodeCount > 50 ? 40 : nodeCount > 30 ? 35 : 30,
+          idealEdgeLength: nodeCount > 50 ? 220 : nodeCount > 30 ? 200 : 180,
+          edgeElasticity: 80,
+          nestingFactor: 0.8,
+          gravity: 0.05,
+          numIter: nodeCount > 50 ? 6000 : nodeCount > 30 ? 5500 : 5000,
+          initialTemp: 2500,
+          coolingFactor: 0.97,
+          minTemp: 10.0,
+          fit: true,
+          padding: 15,
+          randomize: true,
+          componentSpacing: nodeCount > 50 ? 300 : nodeCount > 30 ? 250 : 200,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          nodeDimensionsIncludeLabels: true,
+          unconstrIter: 3000,
+          userConstIter: 1000,
+          allConstIter: 200
+        },
+        'circle': {
+          name: 'circle',
+          fit: true,
+          padding: 20,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: true,
+          spacingFactor: 1.5,
+          radius: Math.min(700, 350),
+          startAngle: 3 / 2 * Math.PI,
+          sweep: undefined,
+          clockwise: true,
+          sort: undefined,
+          animate: true,
+          animationDuration: 500
+        },
+        'grid': {
+          name: 'grid',
+          fit: true,
+          padding: 20,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          avoidOverlap: true,
+          avoidOverlapPadding: 20,
+          nodeDimensionsIncludeLabels: true,
+          spacingFactor: 2.0,
+          condense: false,
+          rows: undefined,
+          cols: undefined,
+          position: function(node) {},
+          sort: undefined,
+          animate: true,
+          animationDuration: 500
+        },
+        'concentric': {
+          name: 'concentric',
+          fit: true,
+          padding: 20,
+          startAngle: 3 / 2 * Math.PI,
+          sweep: undefined,
+          clockwise: true,
+          equidistant: false,
+          minNodeSpacing: 40,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: true,
+          height: undefined,
+          width: undefined,
+          spacingFactor: 2.0,
+          concentric: function(node) {
+            return node.degree();
+          },
+          levelWidth: function(nodes) {
+            return nodes.maxDegree() / 3;
+          },
+          animate: true,
+          animationDuration: 500
+        },
+        'dagre': {
+          name: 'dagre',
+          rankDir: 'LR',
+          nodeSep: 50,
+          edgeSep: 10,
+          rankSep: 100,
+          fit: true,
+          padding: 30,
+          animate: true,
+          animationDuration: 500
+        },
+        'breadthfirst': {
+          name: 'breadthfirst',
+          fit: true,
+          directed: false,
+          padding: 20,
+          circle: false,
+          grid: false,
+          spacingFactor: 2.5,
+          boundingBox: { x1: 0, y1: 0, w: 1860, h: 1020 },
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: true,
+          roots: undefined,
+          maximal: false,
+          animate: true,
+          animationDuration: 500
+        }
+      };
+      
+      return layouts[layoutName] || layouts['cose'];
+    }
+    
+    function changeLayout() {
+      if (!cy) return;
+      const selectedLayout = document.getElementById('layoutSelect').value;
+      updateStatus(`Applying ${selectedLayout} layout...`);
+      
+      const layout = cy.layout(getLayoutConfig(selectedLayout));
+      layout.run();
+      
+      setTimeout(() => {
+        updateStatus(`Layout changed to ${selectedLayout}`);
+      }, 600);
+    }
+
+    function fitToCanvas() {
+      if (!cy) return;
+      updateStatus('Fitting graph to canvas...');
+      
+      // Get current canvas dimensions
+      const container = document.getElementById('cy');
+      const containerRect = container.getBoundingClientRect();
+      
+      // Fit the graph to the current canvas with padding
+      cy.fit(cy.elements(), 25);
+      
+      // Optionally center the graph
+      cy.center();
+      
+      updateStatus('Graph fitted to canvas successfully.');
+    }
+
+    function resetZoom() {
+      if (!cy) return;
+      updateStatus('Resetting zoom...');
+      
+      // Reset zoom to show all elements with proper padding
+      cy.fit(cy.elements(), 30);
+      cy.center();
+      
+      updateStatus('Zoom reset successfully.');
+    }
+
+    function getOptimalLayout(nodeCount) {
+      // Automatically suggest the best layout based on network size
+      if (nodeCount > 100) return 'cose-spread';
+      if (nodeCount > 50) return 'cose-spread';
+      if (nodeCount > 30) return 'cose';
+      if (nodeCount > 20) return 'cose';
+      return 'cose';
+    }
+
+    function applyOptimalLayout() {
+      if (!cy) return;
+      const nodeCount = cy.nodes().length;
+      const optimalLayout = getOptimalLayout(nodeCount);
+      
+      document.getElementById('layoutSelect').value = optimalLayout;
+      updateStatus(`Auto-applying ${optimalLayout} layout for ${nodeCount} nodes...`);
+      
+      const layout = cy.layout(getLayoutConfig(optimalLayout));
+      layout.run();
+      
+      setTimeout(() => {
+        updateStatus(`Optimal layout applied for ${nodeCount} nodes`);
+      }, 1000);
+    }
+
+    function checkForOverlaps() {
+      if (!cy) return;
+      
+      const nodes = cy.nodes();
+      const nodeCount = nodes.length;
+      let overlappingPairs = 0;
+      
+      // Check for overlapping nodes
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const node1 = nodes[i];
+          const node2 = nodes[j];
+          
+          const pos1 = node1.position();
+          const pos2 = node2.position();
+          
+          const distance = Math.sqrt(Math.pow(pos1.x - pos2.x, 2) + Math.pow(pos1.y - pos2.y, 2));
+          const minDistance = 80; // Minimum safe distance between nodes
+          
+          if (distance < minDistance) {
+            overlappingPairs++;
+          }
+        }
+      }
+      
+      if (overlappingPairs > 0) {
+        const overlapPercentage = ((overlappingPairs * 2) / nodeCount * 100).toFixed(1);
+        updateStatus(`⚠️ ${overlappingPairs} overlapping node pairs detected (${overlapPercentage}%). Try "COSE Spread" layout or "Auto Layout" for better spacing.`);
+        
+        // Auto-suggest better layout for high overlap
+        if (overlapPercentage > 20 && document.getElementById('layoutSelect').value !== 'cose-spread') {
+          setTimeout(() => {
+            if (confirm(`High overlap detected (${overlapPercentage}%). Switch to "COSE Spread" layout for better spacing?`)) {
+              document.getElementById('layoutSelect').value = 'cose-spread';
+              changeLayout();
+            }
+          }, 2000);
+        }
+      } else {
+        updateStatus(`✅ Layout looks good with ${nodeCount} nodes and ${cy.edges().length} edges. No overlaps detected.`);
+      }
+    }
+    
+    function parseRelations(txt) {
+        const nodesSet = new Set();
+        const edgeSet = new Set(); // To store undirected edges
+        const edges = [];
+        txt.trim().split('\n').forEach(line => {
+            const match = line.match(/^(\w+)\s*=\s*\[([^\]]+)\]/);
+            if (!match) return;
+            const src = match[1];
+            nodesSet.add(src);
+            match[2].split(',').map(t => t.trim()).forEach(dst => {
+                nodesSet.add(dst);
+                // For undirected: sort src and dst, join with '-'
+                const key = [src, dst].sort().join('-');
+                if (!edgeSet.has(key)) {
+                    edgeSet.add(key);
+                    edges.push({ data: { id: key, source: src, target: dst } });
+                }
+            });
+        });
+        // Mark router nodes (IDs containing 'r_', 'r1_', 'r2_', etc.) with a class
+        const nodes = Array.from(nodesSet).map(n => {
+            const name = n.trim();
+            const node = { data: { id: name, label: name } };
+            if (/r\d*_/.test(name)) node.classes = 'router';
+            return node;
+        });
+        return { nodes, edges };
+    }
+
+    function drawGraph(nodes, edges) {
+      // Clear any previous error messages
+      const cyDiv = document.getElementById('cy');
+      cyDiv.innerHTML = '';
+      
+      // Determine optimal layout based on network size
+      const nodeCount = nodes.length;
+      const optimalLayout = getOptimalLayout(nodeCount);
+      
+      // Update the layout dropdown to reflect the optimal choice
+      document.getElementById('layoutSelect').value = optimalLayout;
+      
+      // Show network size information
+      updateStatus(`Rendering network with ${nodeCount} nodes and ${edges.length} edges using ${optimalLayout} layout...`);
+      
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: { nodes: nodes, edges: edges },
+        style: [
+          { selector: 'node', style: {
+              'label': 'data(label)',
+              'text-valign': 'center',
+              'text-halign': 'center',
+              'text-wrap': 'wrap',
+              'text-max-width': '120px',
+              'background-color': '#1e90ff',
+              'color': '#fff',
+              'font-size': '16px',
+              'width': '100px',
+              'height': '50px',
+              'shape': 'ellipse',
+              'border-width': 2,
+              'border-color': '#0066cc',
+              'text-outline-width': 1,
+              'text-outline-color': '#000'
+            }
+          },
+          { selector: 'node.router', style: {
+            'background-color': '#FFD700',
+            'color': '#333',
+            'font-weight': 'bold',
+            'font-size': '20px',
+            'shape': 'roundrectangle',
+            'border-width': 2,
+            'border-color': '#FF8C00',
+            'text-outline-color': '#FFF'
+           }
+          },
+          { selector: 'edge', style: {
+              'width': 2,
+              'line-color': '#888',
+              'target-arrow-shape': 'none',
+              'target-arrow-color': '#888',
+              'curve-style': 'bezier'
+            }
+          }
+        ],
+        layout: getLayoutConfig(optimalLayout),
+        
+        // Enable zooming and panning
+        zoomingEnabled: true,
+        userZoomingEnabled: true,
+        panningEnabled: true,
+        userPanningEnabled: true,
+        
+        // Set zoom limits
+        minZoom: 0.1,
+        maxZoom: 3.0,
+        
+        // Wheel sensitivity
+        wheelSensitivity: 0.1
+      });
+      
+      // Auto-fit to canvas after layout is complete
+      cy.ready(function() {
+        setTimeout(() => {
+          cy.fit(cy.elements(), 30);
+          cy.center();
+          
+          // Check for overlaps and provide suggestions
+          checkForOverlaps();
+        }, 1200); // Wait for layout animation to complete
+      });
+    }
+
+    function exportPng() {
+      if (!cy) return;
+      let filename = prompt("Enter file name for PNG export:", "graph.png");
+      if (!filename) return; // User cancelled
+      if (!filename.endsWith('.png')) filename += '.png';
+
+      let watermark = prompt("Enter watermark text (leave empty for no watermark):", "");
+      const pngData = cy.png({ full: true, scale: 2 });
+
+      if (!watermark) {
+        // No watermark, export as usual
+        const link = document.createElement('a');
+        link.href = pngData;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      // Add watermark
+      const img = new window.Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        // Draw watermark (diagonal, semi-transparent, centered)
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.font = 'bold 88px Arial';
+        ctx.fillStyle = 'red';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.rotate(-Math.atan(canvas.height/canvas.width));
+        ctx.fillText(watermark, 0, 0);
+        ctx.restore();
+
+        const outData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = outData;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      img.src = pngData;
+    }
+
+    function exportJpg() {
+      if (!cy) return;
+      let filename = prompt("Enter file name for JPG export:", "graph.jpg");
+      if (!filename) return; // User cancelled
+      if (!filename.endsWith('.jpg')) filename += '.jpg';
+
+      let watermark = prompt("Enter watermark text (leave empty for no watermark):", "");
+      const jpgData = cy.jpg({ full: true, scale: 2, quality: 1 });
+
+      if (!watermark) {
+        // No watermark, export as usual
+        const link = document.createElement('a');
+        link.href = jpgData;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      // Add watermark
+      const img = new window.Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        // Draw watermark (diagonal, semi-transparent, centered)
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.font = 'bold 88px Arial';
+        ctx.fillStyle = 'red';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.rotate(-Math.atan(canvas.height/canvas.width));
+        ctx.fillText(watermark, 0, 0);
+        ctx.restore();
+
+        const outData = canvas.toDataURL('image/jpeg', 1.0);
+        const link = document.createElement('a');
+        link.href = outData;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      img.src = jpgData;
+    }
+
+    function updateStatus(message) {
+      const statusDiv = document.getElementById('status');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+      }
+    }
+
+    function loadSampleData() {
+      updateStatus('Loading sample data...');
+      const sampleData = `r0_vsoc=[r1_vsoc,r1_vddz,mpccp,fch,mpm,sst0,zsc3_msmu,zsc8_msmu,zsc9_msmu,zsc10_msmu]
+r1_vsoc=[r0_vsoc,smuio,thm,l1imuPCIE0,l1imuPCIE2,iohc0,l2imu0,ioagr0,ioapic0,sst1,lsdma0,vpe,l1imuIOAGR]
+r1_vddz=[r0_vsoc,mpccp,fch,mpm,sst0,zsc3_msmu,zsc8_msmu,zsc9_msmu,zsc10_msmu]
+mpccp=[r0_vsoc,r1_vddz,fch,mpm]
+fch=[r0_vsoc,r1_vddz,mpccp,fch]
+mpm=[r0_vsoc,r1_vddz,mpccp,fch]`;
+      
+      try {
+        const { nodes, edges } = parseRelations(sampleData);
+        drawGraph(nodes, edges);
+        updateStatus(`Graph rendered successfully with ${nodes.length} nodes and ${edges.length} edges.`);
+      } catch (error) {
+        console.error('Error loading sample data:', error);
+        updateStatus('Error loading sample data. Check console for details.');
+      }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+      
+      updateStatus(`Loading file: ${file.name}...`);
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const txt = e.target.result;
+          const { nodes, edges } = parseRelations(txt);
+          drawGraph(nodes, edges);
+          updateStatus(`File loaded successfully with ${nodes.length} nodes and ${edges.length} edges.`);
+        } catch (error) {
+          console.error('Error processing file:', error);
+          updateStatus('Error processing file. Check console for details.');
+        }
+      };
+      reader.onerror = function() {
+        updateStatus('Error reading file.');
+      };
+      reader.readAsText(file);
+    });
+
+    // Add window resize handler to refit graph
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+      if (!cy) return;
+      
+      // Debounce resize events
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(function() {
+        cy.resize(); // Tell cytoscape the container size changed
+        fitToCanvas(); // Refit to new canvas size
+      }, 250);
+    });
+  </script>
+</body>
+</html>
